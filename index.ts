@@ -2,6 +2,7 @@ import child_process from "child_process";
 import path from "path";
 import fs from "fs";
 import express from "express";
+import ffmpegStatic from "ffmpeg-static";
 
 fs.rmSync("downloads", { recursive: true, force: true });
 fs.mkdirSync("downloads", { recursive: true });
@@ -68,7 +69,7 @@ const download = async (info: any) => {
         info.id
     ]);
     //ytdlp.stderr.pipe(process.stderr);
-    let ffmpeg = child_process.spawn("ffmpeg", [
+    let ffmpeg = child_process.spawn(ffmpegStatic as unknown as string, [
         "-i",
         video.audioSource.path,
         "-i",
@@ -91,7 +92,13 @@ const download = async (info: any) => {
     garbageCollect();
 
     console.log(`Preparing full for ${info.id}...`);
-    ffmpeg = child_process.spawn("ffmpeg", ["-i", video.fragMp4.path, "-c", "copy", video.fullMp4.path]);
+    ffmpeg = child_process.spawn(ffmpegStatic as unknown as string, [
+        "-i",
+        video.fragMp4.path,
+        "-c",
+        "copy",
+        video.fullMp4.path
+    ]);
     //ffmpeg.stderr.pipe(process.stderr);
 
     await new Promise<void>((resolve) => ffmpeg.on("close", resolve));

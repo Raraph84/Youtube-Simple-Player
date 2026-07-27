@@ -4,15 +4,18 @@ import fs from "fs";
 import express from "express";
 import ffmpegStatic from "ffmpeg-static";
 
+const CACHE_SIZE = 5 * 1024 * 1024 * 1024;
+
 fs.chmodSync("yt-dlp_linux", 0o755);
 fs.rmSync("downloads", { recursive: true, force: true });
 fs.mkdirSync("downloads", { recursive: true });
 
 const videos: {
     [key: string]: {
+        size: number;
         audioSource: { state: "pending" | "running" | "done" | "deleted"; locks: number; path: string };
         fragMp4: { state: "pending" | "running" | "done" | "deleted"; locks: number; path: string };
-        fullMp4: { state: "pending" | "done"; path: string };
+        fullMp4: { state: "pending" | "done"; locks: number; path: string; lastUsed: number };
     };
 } = {};
 
@@ -27,6 +30,22 @@ const garbageCollect = async () => {
             await fs.promises.unlink(video.fragMp4.path);
         }
     }
+
+    const deletableVideos = Object.entries(videos)
+        .filter(
+            ([_, video]) =>
+                video.audioSource.state === "deleted" &&
+                video.fragMp4.state === "deleted" &&
+                video.fullMp4.state === "done" &&
+                !video.fragMp4.locks &&
+                video.fullMp4.lastUsed + 5 * 60 * 1000 < Date.now()
+        )
+        .sort(([_a, a], [_b, b]) => a.fullMp4.lastUsed - b.fullMp4.lastUsed);
+    for (const [id, video] of deletableVideos) {
+        if (Object.values(videos).reduce((acc, v) => acc + v.size, 0) <= CACHE_SIZE) break;
+        delete videos[id];
+        await fs.promises.unlink(video.fullMp4.path);
+    }
 };
 
 const download = async (info: any) => {
@@ -39,7 +58,8 @@ const download = async (info: any) => {
     videos[info.id] = {
         audioSource: { state: "pending", locks: 1, path: `downloads/${info.id}-audio.${bestAudio.ext}` },
         fragMp4: { state: "pending", locks: 1, path: `downloads/${info.id}-frag.mp4` },
-        fullMp4: { state: "pending", path: `downloads/${info.id}.mp4` }
+        fullMp4: { state: "pending", locks: 0, path: `downloads/${info.id}.mp4`, lastUsed: Date.now() },
+        size: (bestVideo.filesize ?? bestVideo.filesize_approx) + (bestAudio.filesize ?? bestAudio.filesize_approx)
     };
     const video = videos[info.id]!;
 
@@ -51,6 +71,7 @@ const download = async (info: any) => {
         bestAudio.format_id,
         "-o",
         video.audioSource.path,
+        "--",
         info.id
     ]);
 
@@ -67,6 +88,7 @@ const download = async (info: any) => {
         bestVideo.format_id,
         "-o",
         "-",
+        "--",
         info.id
     ]);
     //ytdlp.stderr.pipe(process.stderr);
@@ -105,6 +127,10 @@ const download = async (info: any) => {
     await new Promise<void>((resolve) => ffmpeg.on("close", resolve));
     video.fullMp4.state = "done";
     video.fragMp4.locks--;
+
+    const stat = await fs.promises.stat(video.fullMp4.path);
+    video.size = stat.size;
+
     garbageCollect();
 
     console.log(`Done ${info.id}!`);
@@ -122,15 +148,26 @@ app.get("/:id", async (req, res) => {
             return;
         }
 
+        if (Object.values(videos).reduce((acc, v) => acc + v.size, 0) > CACHE_SIZE) await garbageCollect();
+        if (Object.values(videos).reduce((acc, v) => acc + v.size, 0) > CACHE_SIZE) {
+            res.status(400).json({ error: "Cache is full" });
+            return;
+        }
+
         let info;
         try {
             info = await new Promise<any>((resolve, reject) =>
-                child_process.exec(`./yt-dlp_linux --js-runtimes node -j ${id}`, (error, stdout, stderr) =>
+                child_process.exec(`./yt-dlp_linux --js-runtimes node -j -- ${id}`, (error, stdout, stderr) =>
                     error ? reject(error) : resolve(JSON.parse(stdout))
                 )
             );
         } catch (error) {
-            res.status(400).json({ error: "Invalid video" });
+            if (error instanceof Error && error.message.includes("Video unavailable")) {
+                res.status(400).json({ error: "Invalid video" });
+                return;
+            }
+            console.log(`Error fetching info for ${id}:`, error);
+            res.status(500).json({ error: "Internal server error" });
             return;
         }
 
@@ -139,7 +176,10 @@ app.get("/:id", async (req, res) => {
 
     const video = videos[id]!;
     if (full || video.fullMp4.state === "done") {
+        video.fullMp4.locks++;
         while (video.fullMp4.state === "pending") await new Promise<void>((resolve) => setTimeout(resolve, 50));
+        video.fullMp4.lastUsed = Date.now();
+        res.on("close", () => video.fullMp4.locks--);
         res.sendFile(path.resolve(video.fullMp4.path));
     } else {
         video.fragMp4.locks++;

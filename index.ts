@@ -162,7 +162,10 @@ app.get("/:id", async (req, res) => {
                 )
             );
         } catch (error) {
-            if (error instanceof Error && error.message.includes("Video unavailable")) {
+            if (
+                error instanceof Error &&
+                (error.message.includes("is not a valid URL") || error.message.includes("Video unavailable"))
+            ) {
                 res.status(400).json({ error: "Invalid video" });
                 return;
             }

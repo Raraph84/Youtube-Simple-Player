@@ -4,6 +4,7 @@ import fs from "fs";
 import express from "express";
 import ffmpegStatic from "ffmpeg-static";
 
+fs.chmodSync("yt-dlp_linux", 0o755);
 fs.rmSync("downloads", { recursive: true, force: true });
 fs.mkdirSync("downloads", { recursive: true });
 

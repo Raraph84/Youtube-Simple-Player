@@ -74,6 +74,7 @@ const download = async (info: any) => {
         "--",
         info.id
     ]);
+    ytdlp.stderr.resume();
 
     while (!fs.existsSync(video.audioSource.path)) await new Promise<void>((resolve) => setTimeout(resolve, 50));
     video.audioSource.state = "running";
@@ -91,7 +92,7 @@ const download = async (info: any) => {
         "--",
         info.id
     ]);
-    //ytdlp.stderr.pipe(process.stderr);
+    ytdlp.stderr.resume();
     let ffmpeg = child_process.spawn(ffmpegStatic as unknown as string, [
         "-i",
         video.audioSource.path,
@@ -103,7 +104,7 @@ const download = async (info: any) => {
         "frag_keyframe+empty_moov",
         video.fragMp4.path
     ]);
-    //ffmpeg.stderr.pipe(process.stderr);
+    ffmpeg.stderr.resume();
 
     ytdlp.stdout.pipe(ffmpeg.stdin);
 
@@ -122,7 +123,7 @@ const download = async (info: any) => {
         "copy",
         video.fullMp4.path
     ]);
-    //ffmpeg.stderr.pipe(process.stderr);
+    ffmpeg.stderr.resume();
 
     await new Promise<void>((resolve) => ffmpeg.on("close", resolve));
     video.fullMp4.state = "done";

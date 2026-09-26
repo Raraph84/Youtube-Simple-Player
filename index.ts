@@ -158,8 +158,10 @@ app.get("/:id", async (req, res) => {
         let info;
         try {
             info = await new Promise<any>((resolve, reject) =>
-                child_process.exec(`./yt-dlp_linux --js-runtimes node -j -- ${id}`, (error, stdout, stderr) =>
-                    error ? reject(error) : resolve(JSON.parse(stdout))
+                child_process.exec(
+                    `./yt-dlp_linux --js-runtimes node -j -- ${id}`,
+                    { maxBuffer: 128 * 1024 * 1024 },
+                    (error, stdout, stderr) => (error ? reject(error) : resolve(JSON.parse(stdout)))
                 )
             );
         } catch (error) {

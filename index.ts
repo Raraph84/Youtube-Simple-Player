@@ -4,7 +4,7 @@ import fs from "fs";
 import express from "express";
 import ffmpegStatic from "ffmpeg-static";
 
-const CACHE_SIZE = 5 * 1024 * 1024 * 1024;
+const CACHE_SIZE = 10 * 1024 * 1024 * 1024;
 
 fs.chmodSync("yt-dlp_linux", 0o755);
 fs.rmSync("downloads", { recursive: true, force: true });

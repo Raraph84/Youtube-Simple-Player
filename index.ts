@@ -76,7 +76,9 @@ const download = async (info: any) => {
     ]);
     ytdlp.stderr.resume();
 
-    while (!fs.existsSync(video.audioSource.path)) await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    while (!fs.existsSync(video.audioSource.path) && ytdlp.exitCode === null)
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    if (ytdlp.exitCode !== null && ytdlp.exitCode !== 0) throw new Error(`yt-dlp exited with code ${ytdlp.exitCode}`);
     video.audioSource.state = "running";
     await new Promise<void>((resolve) => ytdlp.on("close", resolve));
     video.audioSource.state = "done";
@@ -108,7 +110,9 @@ const download = async (info: any) => {
 
     ytdlp.stdout.pipe(ffmpeg.stdin);
 
-    while (!fs.existsSync(video.fragMp4.path)) await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    while (!fs.existsSync(video.fragMp4.path) && ytdlp.exitCode === null)
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    if (ytdlp.exitCode !== null && ytdlp.exitCode !== 0) throw new Error(`yt-dlp exited with code ${ytdlp.exitCode}`);
     video.fragMp4.state = "running";
     await new Promise<void>((resolve) => ffmpeg.on("close", resolve));
     video.fragMp4.state = "done";
